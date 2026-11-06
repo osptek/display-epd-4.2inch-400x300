@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Eink E6 4.2</title>
+  <script src="/vue.global.prod.js"></script>
+  <style>
+    :root {
+      --ink: #14201c;
+      --paper: #edf1ea;
+      --leaf: #2d6a4f;
+      --leaf-deep: #1b4332;
+      --line: rgba(20, 32, 28, 0.12);
+      --soft: rgba(20, 32, 28, 0.55);
+    }
+
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      color: var(--ink);
+      background:
+        radial-gradient(1200px 600px at 10% -10%, #d9e6d7 0%, transparent 55%),
+        radial-gradient(900px 500px at 100% 0%, #cfe0d8 0%, transparent 50%),
+        linear-gradient(165deg, #f4f7f1 0%, #e4ebe3 48%, #d7e0d6 100%);
+      font-family: "Avenir Next", "Segoe UI", "PingFang SC", "Hiragino Sans GB",
+                   "Microsoft YaHei", sans-serif;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.035;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E");
+    }
+
+    #app {
+      width: min(640px, 100%);
+      margin: 0 auto;
+      padding: 24px 18px 56px;
+      position: relative;
+    }
+
+    .brand {
+      font-family: "Iowan Old Style", "Palatino Linotype", "Songti SC", "Noto Serif SC", Georgia, serif;
+      font-size: clamp(2rem, 7vw, 2.8rem);
+      font-weight: 600;
+      letter-spacing: -0.03em;
+      line-height: 1.05;
+      margin: 4px 0 6px;
+    }
+
+    .lead {
+      margin: 0 0 20px;
+      color: var(--soft);
+      font-size: 0.95rem;
+    }
+
+    .tabs {
+      display: flex;
+      border: 1px solid var(--line);
+      margin-bottom: 20px;
+      width: 100%;
+    }
+    .tabs button {
+      flex: 1;
+      appearance: none;
+      border: none;
+      background: transparent;
+      padding: 12px 10px;
+      font: inherit;
+      color: var(--soft);
+      cursor: pointer;
+    }
+    .tabs button.active {
+      background: var(--leaf-deep);
+      color: #f3f7f2;
+    }
+
+    .field {
+      display: block;
+      font-size: 0.72rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--soft);
+      margin: 0 0 8px;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 140px;
+      resize: vertical;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.55);
+      padding: 14px;
+      font: inherit;
+      font-size: 1.1rem;
+      line-height: 1.5;
+      color: var(--ink);
+      outline: none;
+    }
+    textarea:focus { border-color: var(--leaf); }
+
+    .swatches {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 8px;
+    }
+    .swatch {
+      appearance: none;
+      border: 2px solid transparent;
+      width: 100%;
+      aspect-ratio: 1;
+      cursor: pointer;
+      padding: 0;
+    }
+    .swatch.active { border-color: var(--ink); }
+
+    .preview-frame {
+      width: min(100%, 320px);
+      /* 4.2" 屏为 300x400 竖屏，取景框固定 3:4，canvas 不会被拉伸变形 */
+      aspect-ratio: 3 / 4;
+      margin: 0 auto 8px;
+      border: 1px solid var(--line);
+      background: #111;
+      box-shadow: 0 16px 36px rgba(27, 67, 50, 0.12);
+      overflow: hidden;
+      touch-action: none;
+      cursor: grab;
+      position: relative;
+    }
+    .preview-frame.dragging { cursor: grabbing; }
+    .preview-frame.has-img { background: #1a1a1a; }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      image-rendering: pixelated;
+    }
+
+    .preview-tip {
+      text-align: center;
+      font-size: 0.82rem;
+      color: var(--soft);
+      margin: 0 0 16px;
+      min-height: 1.2em;
+    }
+
+    .panel {
+      display: grid;
+      gap: 16px;
+    }
+
+    .slider {
+      display: grid;
+      gap: 6px;
+    }
+    .slider-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 10px;
+    }
+    .slider-head .field { margin: 0; }
+    .slider-val {
+      font-size: 0.82rem;
+      color: var(--soft);
+      font-variant-numeric: tabular-nums;
+    }
+    .slider input[type="range"] {
+      width: 100%;
+      accent-color: var(--leaf);
+    }
+
+    .quant-row {
+      display: flex;
+      border: 1px solid var(--line);
+      width: 100%;
+    }
+    .quant-row button {
+      flex: 1;
+      appearance: none;
+      border: none;
+      background: transparent;
+      color: var(--soft);
+      padding: 11px 12px;
+      font: inherit;
+      font-size: 0.92rem;
+      cursor: pointer;
+    }
+    .quant-row button.active {
+      background: var(--leaf-deep);
+      color: #f3f7f2;
+    }
+
+    .upload-btn, .ghost-btn, .primary {
+      appearance: none;
+      font: inherit;
+      cursor: pointer;
+      transition: background 0.15s ease, opacity 0.15s ease, transform 0.1s ease;
+    }
+    .upload-btn {
+      width: 100%;
+      border: 1px dashed var(--line);
+      background: rgba(255,255,255,0.45);
+      color: var(--ink);
+      padding: 14px 16px;
+      font-size: 1rem;
+    }
+    .upload-btn:hover { border-color: var(--leaf); }
+    .ghost-btn {
+      border: 1px solid var(--line);
+      background: transparent;
+      color: var(--ink);
+      padding: 10px 14px;
+      font-size: 0.9rem;
+    }
+    .primary {
+      border: none;
+      background: var(--leaf-deep);
+      color: #f3f7f2;
+      padding: 14px 22px;
+      font-size: 1rem;
+    }
+    .primary:hover { background: var(--leaf); }
+    .primary:active, .ghost-btn:active { transform: scale(0.98); }
+    .primary:disabled, .upload-btn:disabled, .ghost-btn:disabled {
+      opacity: 0.5;
+      cursor: wait;
+    }
+
+    input[type="file"] { display: none; }
+
+    .row-gap { display: grid; gap: 14px; }
+    .two-col { display: grid; gap: 14px; }
+    @media (min-width: 520px) {
+      .two-col { grid-template-columns: 1fr 1fr; }
+    }
+
+    .actions {
+      margin-top: 22px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+    }
+    .status {
+      color: var(--soft);
+      font-size: 0.9rem;
+      min-height: 1.2em;
+    }
+    .status.ok { color: var(--leaf-deep); }
+    .status.err { color: #8b2e2e; }
+
+    .img-meta {
+      margin: 0;
+      font-size: 0.84rem;
+      color: var(--leaf-deep);
+      word-break: break-all;
+    }
+    .hint {
+      margin: 0;
+      font-size: 0.84rem;
+      color: var(--soft);
+    }
+
+    .divider {
+      height: 1px;
+      background: var(--line);
+      margin: 4px 0;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <h1 class="brand">Eink E6 4.2</h1>
+    <p class="lead">4.2″ 300×400 六色 · 在此上传文本或图片~</p>
+
+    <div class="tabs">
+      <button type="button" :class="{ active: tab === 'text' }" @click="switchTab('text')">文本</button>
+      <button type="button" :class="{ active: tab === 'image' }" @click="switchTab('image')">图片</button>
+    </div>
+
+    <!-- 预览：图片模式可拖拽取景 -->
+    <div
+      class="preview-frame"
+      :class="{ 'has-img': tab === 'image' && !!imageEl, dragging }"
+      @pointerdown="onPanStart"
+      @pointermove="onPanMove"
+      @pointerup="onPanEnd"
+      @pointercancel="onPanEnd"
+      @pointerleave="onPanEnd"
+    >
+      <canvas ref="canvas" width="300" height="400"></canvas>
+    </div>
+    <p class="preview-tip">
+      <template v-if="tab === 'image' && imageEl">一点小调整</template>
+      <template v-else-if="tab === 'image'">选择一张图片</template>
+      <template v-else>文本预览</template>
+    </p>
+
+    <!-- 文本 -->
+    <div v-show="tab === 'text'" class="panel">
+      <div>
+        <label class="field" for="text">文本</label>
+        <textarea id="text" v-model="text" placeholder="写点什么…" @input="renderText"></textarea>
+      </div>
+      <div class="two-col">
+        <div>
+          <div class="field">背景色</div>
+          <div class="swatches">
+            <button
+              v-for="c in colors" :key="'bg-'+c.id"
+              class="swatch" type="button"
+              :class="{ active: bg === c.id }"
+              :style="{ background: c.css }"
+              @click="bg = c.id; renderText()"
+            ></button>
+          </div>
+        </div>
+        <div>
+          <div class="field">字体色</div>
+          <div class="swatches">
+            <button
+              v-for="c in colors" :key="'fg-'+c.id"
+              class="swatch" type="button"
+              :class="{ active: fg === c.id }"
+              :style="{ background: c.css }"
+              @click="fg = c.id; renderText()"
+            ></button>
+          </div>
+        </div>
+      </div>
+      <div class="slider">
+        <div class="slider-head">
+          <span class="field">字号</span>
+          <span class="slider-val">{{ fontSize }}px</span>
+        </div>
+        <input type="range" min="20" max="96" step="2" v-model.number="fontSize" @input="renderText" />
+      </div>
+    </div>
+
+    <!-- 图片 -->
+    <div v-show="tab === 'image'" class="panel">
+      <input ref="fileInput" type="file" accept="image/*" @change="onFileChange" />
+      <button class="upload-btn" type="button" :disabled="busy" @click="fileInput.click()">
+        {{ imageEl ? '更换图片' : '选择图片' }}
+      </button>
+      <p v-if="imageName" class="img-meta">{{ imageName }} · {{ imgW }}×{{ imgH }}</p>
+      <p class="hint">3:4 取景裁剪</p>
+
+      <template v-if="imageEl">
+        <div class="divider"></div>
+
+        <div class="field">取景</div>
+        <div class="slider">
+          <div class="slider-head">
+            <span class="field">缩放</span>
+            <span class="slider-val">{{ zoom.toFixed(2) }}×</span>
+          </div>
+          <input type="range" min="1" max="4" step="0.01" v-model.number="zoom" @input="onCropChange" />
+        </div>
+        <div class="slider">
+          <div class="slider-head">
+            <span class="field">水平</span>
+            <span class="slider-val">{{ Math.round(panX * 100) }}%</span>
+          </div>
+          <input type="range" min="0" max="1" step="0.001" v-model.number="panX" @input="onCropChange" />
+        </div>
+        <div class="slider">
+          <div class="slider-head">
+            <span class="field">垂直</span>
+            <span class="slider-val">{{ Math.round(panY * 100) }}%</span>
+          </div>
+          <input type="range" min="0" max="1" step="0.001" v-model.number="panY" @input="onCropChange" />
+        </div>
+        <div>
+          <button class="ghost-btn" type="button" @click="resetCrop">重置取景</button>
+        </div>
+
+        <div class="divider"></div>
+        <div class="field">调整</div>
+        <div class="slider">
+          <div class="slider-head">
+            <span class="field">曝光</span>
+            <span class="slider-val">{{ exposure > 0 ? '+' : '' }}{{ exposure }}</span>
+          </div>
+          <input type="range" min="-100" max="100" step="1" v-model.number="exposure" @input="onAdjustChange" />
+        </div>
+        <div class="slider">
+          <div class="slider-head">
+            <span class="field">亮度</span>
+            <span class="slider-val">{{ brightness > 0 ? '+' : '' }}{{ brightness }}</span>
+          </div>
+          <input type="range" min="-100" max="100" step="1" v-model.number="brightness" @input="onAdjustChange" />
+        </div>
+        <div class="slider">
+          <div class="slider-head">
+            <span class="field">对比度</span>
+            <span class="slider-val">{{ contrast > 0 ? '+' : '' }}{{ contrast }}</span>
+          </div>
+          <input type="range" min="-100" max="100" step="1" v-model.number="contrast" @input="onAdjustChange" />
+        </div>
+        <div class="slider">
+          <div class="slider-head">
+            <span class="field">高光</span>
+            <span class="slider-val">{{ highlights > 0 ? '+' : '' }}{{ highlights }}</span>
+          </div>
+          <input type="range" min="-100" max="100" step="1" v-model.number="highlights" @input="onAdjustChange" />
+        </div>
+        <div class="slider">
+          <div class="slider-head">
+            <span class="field">阴影</span>
+            <span class="slider-val">{{ shadows > 0 ? '+' : '' }}{{ shadows }}</span>
+          </div>
+          <input type="range" min="-100" max="100" step="1" v-model.number="shadows" @input="onAdjustChange" />
+        </div>
+        <div class="slider">
+          <div class="slider-head">
+            <span class="field">饱和度</span>
+            <span class="slider-val">{{ saturation > 0 ? '+' : '' }}{{ saturation }}</span>
+          </div>
+          <input type="range" min="-100" max="100" step="1" v-model.number="saturation" @input="onAdjustChange" />
+        </div>
+        <div>
+          <button class="ghost-btn" type="button" @click="resetAdjust">重置调整</button>
+        </div>
+
+        <div class="divider"></div>
+        <div class="field">量化</div>
+        <div class="quant-row">
+          <button type="button" :class="{ active: quant === 'gray' }" @click="setQuant('gray')">灰度抖动</button>
+          <button type="button" :class="{ active: quant === 'color' }" @click="setQuant('color')">六色抖动</button>
+        </div>
+      </template>
+    </div>
+
+    <div class="actions">
+      <button class="primary" type="button" :disabled="busy || (tab === 'image' && !imageEl)" @click="push">
+        {{ busy ? '刷新中…' : '推送到屏幕' }}
+      </button>
+      <div class="status" :class="statusClass">{{ status }}</div>
+    </div>
+  </div>
+
+  <script>
+    /* 4.2" 六色墨水屏（SSD2693）：逻辑分辨率 300 宽 x 400 高，4bpp */
+    const PANEL_W = 300;
+    const PANEL_H = 400;
+    const PANEL_ASPECT = PANEL_W / PANEL_H; /* 3:4 竖屏 */
+    const FRAME_BYTES = PANEL_W * PANEL_H / 2; /* 60000 字节 */
+
+    const COLORS = [
+      { id: 0x0, name: '黑', css: '#111111' },
+      { id: 0x1, name: '白', css: '#f7f7f2' },
+      { id: 0x2, name: '黄', css: '#e6c84c' },
+      { id: 0x3, name: '红', css: '#c43c3c' },
+      { id: 0x5, name: '蓝', css: '#2f5fbf' },
+      { id: 0x6, name: '绿', css: '#2f8f4e' },
+    ];
+
+    const hexRgb = (css) => {
+      const h = css.slice(1);
+      return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+    };
+
+    const PALETTE_COLOR = COLORS.map((c) => ({ id: c.id, rgb: hexRgb(c.css) }));
+    const PALETTE_GRAY = [
+      { id: 0x0, rgb: hexRgb('#111111') },
+      { id: 0x1, rgb: hexRgb('#f7f7f2') },
+    ];
+    const cssOf = (id) => (COLORS.find((c) => c.id === id) || COLORS[0]).css;
+
+    const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+    const nearestPalette = (r, g, b, palette) => {
+      let best = palette[0];
+      let bestD = Infinity;
+      for (const p of palette) {
+        const dr = r - p.rgb[0];
+        const dg = g - p.rgb[1];
+        const db = b - p.rgb[2];
+        const d = 2 * dr * dr + 4 * dg * dg + 3 * db * db;
+        if (d < bestD) { bestD = d; best = p; }
+      }
+      return best;
+    };
+
+    const ditherToIds = (rgba, grayMode) => {
+      const w = PANEL_W, h = PANEL_H, n = w * h;
+      const rf = new Float32Array(n);
+      const gf = new Float32Array(n);
+      const bf = new Float32Array(n);
+      for (let i = 0; i < n; i++) {
+        let r = rgba[i * 4], g = rgba[i * 4 + 1], b = rgba[i * 4 + 2];
+        if (grayMode) {
+          const y = 0.299 * r + 0.587 * g + 0.114 * b;
+          r = g = b = y;
+        }
+        rf[i] = r; gf[i] = g; bf[i] = b;
+      }
+      const palette = grayMode ? PALETTE_GRAY : PALETTE_COLOR;
+      const ids = new Uint8Array(n);
+      const preview = new Uint8ClampedArray(n * 4);
+      const addErr = (x, y, er, eg, eb, k) => {
+        if (x < 0 || x >= w || y < 0 || y >= h) return;
+        const i = y * w + x;
+        rf[i] += er * k; gf[i] += eg * k; bf[i] += eb * k;
+      };
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const i = y * w + x;
+          const or = rf[i], og = gf[i], ob = bf[i];
+          const p = nearestPalette(or, og, ob, palette);
+          ids[i] = p.id;
+          preview[i * 4] = p.rgb[0];
+          preview[i * 4 + 1] = p.rgb[1];
+          preview[i * 4 + 2] = p.rgb[2];
+          preview[i * 4 + 3] = 255;
+          const er = or - p.rgb[0], eg = og - p.rgb[1], eb = ob - p.rgb[2];
+          addErr(x + 1, y, er, eg, eb, 7 / 16);
+          addErr(x - 1, y + 1, er, eg, eb, 3 / 16);
+          addErr(x, y + 1, er, eg, eb, 5 / 16);
+          addErr(x + 1, y + 1, er, eg, eb, 1 / 16);
+        }
+      }
+      return { ids, preview };
+    };
+
+    /* 4bpp：行优先，每字节 2 个横向像素，高半字节=偶 x（左）像素 */
+    const packIds = (ids) => {
+      const frame = new Uint8Array(FRAME_BYTES);
+      let i = 0;
+      for (let y = 0; y < PANEL_H; y++) {
+        for (let x = 0; x < PANEL_W; x += 2) {
+          frame[i++] = (ids[y * PANEL_W + x] << 4) | ids[y * PANEL_W + x + 1];
+        }
+      }
+      return frame;
+    };
+
+    const applyAdjust = (data, { exposure, brightness, contrast, highlights, shadows, saturation }) => {
+      const exp = Math.pow(2, exposure / 50);
+      const bri = brightness * 1.2;
+      const con = (contrast + 100) / 100;
+      const sat = (saturation + 100) / 100;
+      const hi = highlights / 100;
+      const sh = shadows / 100;
+      for (let i = 0; i < data.length; i += 4) {
+        let r = data[i], g = data[i + 1], b = data[i + 2];
+        r *= exp; g *= exp; b *= exp;
+        r = (r - 128) * con + 128 + bri;
+        g = (g - 128) * con + 128 + bri;
+        b = (b - 128) * con + 128 + bri;
+        let y = 0.299 * r + 0.587 * g + 0.114 * b;
+        if (y > 128 && hi !== 0) {
+          const t = (y - 128) / 127;
+          const k = 1 - hi * t * 0.85;
+          r = 128 + (r - 128) * k;
+          g = 128 + (g - 128) * k;
+          b = 128 + (b - 128) * k;
+          y = 0.299 * r + 0.587 * g + 0.114 * b;
+        }
+        if (y < 128 && sh !== 0) {
+          const t = (128 - y) / 128;
+          const lift = sh * t * 55;
+          r += lift; g += lift; b += lift;
+          y = 0.299 * r + 0.587 * g + 0.114 * b;
+        }
+        r = y + (r - y) * sat;
+        g = y + (g - y) * sat;
+        b = y + (b - y) * sat;
+        data[i] = clamp(r, 0, 255);
+        data[i + 1] = clamp(g, 0, 255);
+        data[i + 2] = clamp(b, 0, 255);
+      }
+    };
+
+    /* 取景：zoom=1 时源图中最大的 3:4 区域（等于屏幕宽高比） */
+    const cropBase = (iw, ih) => {
+      if (!(iw > 0) || !(ih > 0)) return { w: 0, h: 0 };
+      const w = Math.min(iw, ih * PANEL_ASPECT);
+      return { w, h: w / PANEL_ASPECT };
+    };
+
+    /* 源图裁剪矩形：宽高比恒为 3:4（= 300:400），且不越出源图边界 */
+    const cropRectOf = (iw, ih, zoom, panX, panY) => {
+      const base = cropBase(iw, ih);
+      const z = clamp(Number(zoom) || 1, 1, 4);
+      const sw = base.w / z;
+      const sh = base.h / z;
+      const maxX = Math.max(0, iw - sw);
+      const maxY = Math.max(0, ih - sh);
+      return {
+        sx: clamp(Number(panX) || 0, 0, 1) * maxX,
+        sy: clamp(Number(panY) || 0, 0, 1) * maxY,
+        sw,
+        sh,
+      };
+    };
+
+    const { createApp, ref, onMounted, computed, nextTick } = Vue;
+
+    createApp({
+      setup() {
+        const tab = ref('text');
+        const text = ref('你好，Eink');
+        const bg = ref(0x1);
+        const fg = ref(0x0);
+        const fontSize = ref(42);
+        const busy = ref(false);
+        const status = ref('');
+        const quant = ref('gray');
+        const imageName = ref('');
+        const imageEl = ref(null);
+        const imgW = ref(0);
+        const imgH = ref(0);
+        const ditherIds = ref(null);
+        const canvas = ref(null);
+        const fileInput = ref(null);
+        const colors = COLORS;
+
+        const zoom = ref(1);
+        const panX = ref(0.5);
+        const panY = ref(0.5);
+        const exposure = ref(0);
+        const brightness = ref(0);
+        const contrast = ref(0);
+        const highlights = ref(0);
+        const shadows = ref(0);
+        const saturation = ref(0);
+
+        const dragging = ref(false);
+        let panStart = null;
+        let ditherTimer = null;
+
+        const statusClass = computed(() => {
+          if (!status.value) return '';
+          return status.value.includes('失败') ? 'err' : 'ok';
+        });
+
+        const wrapLines = (ctx, content, maxWidth) => {
+          const lines = [];
+          for (const para of String(content || '').split(/\n/)) {
+            if (!para) { lines.push(''); continue; }
+            let line = '';
+            for (const ch of para) {
+              const trial = line + ch;
+              if (ctx.measureText(trial).width > maxWidth && line) {
+                lines.push(line);
+                line = ch;
+              } else line = trial;
+            }
+            lines.push(line);
+          }
+          return lines;
+        };
+
+        const cropRect = () => {
+          const img = imageEl.value;
+          if (!img) return null;
+          return cropRectOf(
+            img.naturalWidth || img.width,
+            img.naturalHeight || img.height,
+            zoom.value,
+            panX.value,
+            panY.value,
+          );
+        };
+
+        const renderText = () => {
+          const el = canvas.value;
+          if (!el) return;
+          ditherIds.value = null;
+          const ctx = el.getContext('2d', { willReadFrequently: true });
+          ctx.fillStyle = cssOf(bg.value);
+          ctx.fillRect(0, 0, PANEL_W, PANEL_H);
+          ctx.fillStyle = cssOf(fg.value);
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.font = `600 ${fontSize.value}px "Songti SC","Noto Serif SC","PingFang SC","Microsoft YaHei",serif`;
+          const lines = wrapLines(ctx, text.value, PANEL_W - 56);
+          const lineH = fontSize.value * 1.25;
+          const blockH = lines.length * lineH;
+          /* 文本不多时垂直居中；超长时从顶部起排，避免首行被顶出屏幕 */
+          let y = blockH > PANEL_H ? lineH / 2 : (PANEL_H - blockH) / 2 + lineH / 2;
+          for (const line of lines) {
+            ctx.fillText(line, PANEL_W / 2, y);
+            y += lineH;
+          }
+        };
+
+        /* 快速：裁剪 + 调色（拖动时） */
+        const renderImageFast = () => {
+          const el = canvas.value;
+          const img = imageEl.value;
+          const rect = cropRect();
+          if (!el || !img || !rect) return null;
+          const ctx = el.getContext('2d', { willReadFrequently: true });
+          ctx.fillStyle = '#111111';
+          ctx.fillRect(0, 0, PANEL_W, PANEL_H);
+          ctx.drawImage(img, rect.sx, rect.sy, rect.sw, rect.sh, 0, 0, PANEL_W, PANEL_H);
+          const imgData = ctx.getImageData(0, 0, PANEL_W, PANEL_H);
+          applyAdjust(imgData.data, {
+            exposure: exposure.value,
+            brightness: brightness.value,
+            contrast: contrast.value,
+            highlights: highlights.value,
+            shadows: shadows.value,
+            saturation: quant.value === 'gray' ? -100 : saturation.value,
+          });
+          ctx.putImageData(imgData, 0, 0);
+          return imgData;
+        };
+
+        const renderImageDithered = () => {
+          const imgData = renderImageFast();
+          if (!imgData) return;
+          const el = canvas.value;
+          const ctx = el.getContext('2d', { willReadFrequently: true });
+          const { ids, preview } = ditherToIds(imgData.data, quant.value === 'gray');
+          ditherIds.value = ids;
+          ctx.putImageData(new ImageData(preview, PANEL_W, PANEL_H), 0, 0);
+        };
+
+        const scheduleDither = () => {
+          renderImageFast();
+          clearTimeout(ditherTimer);
+          ditherTimer = setTimeout(() => {
+            renderImageDithered();
+          }, 120);
+        };
+
+        const onCropChange = () => scheduleDither();
+        const onAdjustChange = () => scheduleDither();
+
+        const setQuant = (q) => {
+          quant.value = q;
+          if (imageEl.value) scheduleDither();
+        };
+
+        const resetCrop = () => {
+          zoom.value = 1;
+          panX.value = 0.5;
+          panY.value = 0.5;
+          scheduleDither();
+        };
+
+        const resetAdjust = () => {
+          exposure.value = 0;
+          brightness.value = 0;
+          contrast.value = 0;
+          highlights.value = 0;
+          shadows.value = 0;
+          saturation.value = 0;
+          scheduleDither();
+        };
+
+        const switchTab = (t) => {
+          tab.value = t;
+          nextTick(() => {
+            if (t === 'text') renderText();
+            else if (imageEl.value) scheduleDither();
+            else {
+              const el = canvas.value;
+              if (!el) return;
+              const ctx = el.getContext('2d');
+              ctx.fillStyle = '#1a1a1a';
+              ctx.fillRect(0, 0, PANEL_W, PANEL_H);
+              ditherIds.value = null;
+            }
+          });
+        };
+
+        const onPanStart = (ev) => {
+          if (tab.value !== 'image' || !imageEl.value) return;
+          dragging.value = true;
+          panStart = {
+            x: ev.clientX,
+            y: ev.clientY,
+            panX: panX.value,
+            panY: panY.value,
+          };
+          ev.currentTarget.setPointerCapture?.(ev.pointerId);
+        };
+
+        const onPanMove = (ev) => {
+          if (!dragging.value || !panStart || !imageEl.value) return;
+          const el = ev.currentTarget;
+          const rect = el.getBoundingClientRect();
+          const img = imageEl.value;
+          const iw = img.naturalWidth || img.width;
+          const ih = img.naturalHeight || img.height;
+          const base = cropBase(iw, ih);
+          const sw = base.w / zoom.value;
+          const sh = base.h / zoom.value;
+          const maxX = iw - sw;
+          const maxY = ih - sh;
+          /* 拖动方向与取景相反：手指右移 → 画面右移（看左边内容） */
+          const dx = (ev.clientX - panStart.x) / rect.width;
+          const dy = (ev.clientY - panStart.y) / rect.height;
+          /* 该方向无余量时保持原平移，避免被除零放大后跳到边缘 */
+          panX.value = maxX > 0 ? clamp(panStart.panX - (dx * sw) / maxX, 0, 1) : panStart.panX;
+          panY.value = maxY > 0 ? clamp(panStart.panY - (dy * sh) / maxY, 0, 1) : panStart.panY;
+          scheduleDither();
+        };
+
+        const onPanEnd = () => {
+          dragging.value = false;
+          panStart = null;
+        };
+
+        const onWheel = (ev) => {
+          if (tab.value !== 'image' || !imageEl.value) return;
+          ev.preventDefault();
+          const next = clamp(zoom.value + (ev.deltaY > 0 ? -0.08 : 0.08), 1, 4);
+          zoom.value = Math.round(next * 100) / 100;
+          scheduleDither();
+        };
+
+        const packFrame = () => {
+          if (tab.value === 'image') {
+            if (!ditherIds.value) renderImageDithered();
+            if (!ditherIds.value) throw new Error('没有可推送的图像');
+            return packIds(ditherIds.value);
+          }
+          renderText();
+          const el = canvas.value;
+          const ctx = el.getContext('2d', { willReadFrequently: true });
+          const { data } = ctx.getImageData(0, 0, PANEL_W, PANEL_H);
+          const { ids } = ditherToIds(data, false);
+          return packIds(ids);
+        };
+
+        const push = async () => {
+          busy.value = true;
+          status.value = '正在推送…';
+          try {
+            if (tab.value === 'image') renderImageDithered();
+            else renderText();
+            const body = packFrame();
+            if (body.length !== FRAME_BYTES) {
+              throw new Error(`帧长度 ${body.length}，应为 ${FRAME_BYTES}`);
+            }
+            const res = await fetch('/api/frame', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/octet-stream' },
+              body,
+            });
+            if (!res.ok) throw new Error(await res.text());
+            status.value = '已刷新到屏幕';
+          } catch (e) {
+            status.value = '失败：' + (e.message || e);
+          } finally {
+            busy.value = false;
+          }
+        };
+
+        const onFileChange = async (ev) => {
+          const file = ev.target.files && ev.target.files[0];
+          ev.target.value = '';
+          if (!file) return;
+          status.value = '已载入，请裁剪调参后再推送';
+          try {
+            const url = URL.createObjectURL(file);
+            const img = await new Promise((resolve, reject) => {
+              const im = new Image();
+              im.onload = () => resolve(im);
+              im.onerror = () => reject(new Error('图片无法解码'));
+              im.src = url;
+            });
+            URL.revokeObjectURL(url);
+            imageEl.value = img;
+            imageName.value = file.name;
+            imgW.value = img.naturalWidth || img.width;
+            imgH.value = img.naturalHeight || img.height;
+            tab.value = 'image';
+            resetCrop();
+            resetAdjust();
+            await nextTick();
+            scheduleDither();
+          } catch (e) {
+            status.value = '失败：' + (e.message || e);
+          }
+        };
+
+        onMounted(() => {
+          renderText();
+          const frame = canvas.value && canvas.value.parentElement;
+          if (frame) frame.addEventListener('wheel', onWheel, { passive: false });
+        });
+
+        return {
+          tab, text, bg, fg, fontSize, busy, status, statusClass, colors,
+          canvas, fileInput, imageName, imageEl, imgW, imgH, quant, dragging,
+          zoom, panX, panY, exposure, brightness, contrast, highlights, shadows, saturation,
+          switchTab, renderText, onFileChange, push, setQuant,
+          onCropChange, onAdjustChange, resetCrop, resetAdjust,
+          onPanStart, onPanMove, onPanEnd,
+        };
+      },
+    }).mount('#app');
+  </script>
+</body>
+</html>

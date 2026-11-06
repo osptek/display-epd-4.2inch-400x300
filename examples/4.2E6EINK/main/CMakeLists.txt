@@ -1,0 +1,24 @@
+idf_component_register(
+    SRCS
+        "main.c"
+        "screen_driver/screen_driver.c"
+        "wifi_ap/wifi_ap.c"
+        "web_server/web_server.c"
+    INCLUDE_DIRS
+        "."
+        "screen_driver"
+        "wifi_ap"
+        "web_server"
+    PRIV_REQUIRES
+        esp_driver_spi
+        esp_driver_gpio
+        esp_common
+        esp_wifi
+        esp_netif
+        esp_event
+        nvs_flash
+        esp_http_server
+    EMBED_FILES
+        "web_server/www/index.html"
+        "web_server/www/vue.global.prod.js"
+)

@@ -1,0 +1,10 @@
+id: EPD042A02A0
+category: displays
+size: "4.2"
+panel: epd
+resolution: 400x300
+interface: [spi]
+driver: SSD2693ZA
+touch: null
+outline: 91.00 x 77.00 x 0.9 mm
+active_area: 84.8 x 63.6 mm
